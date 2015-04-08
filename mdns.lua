@@ -26,7 +26,7 @@
 
         require('mdns')
 
-        local res = mdns_resolve('_ipps._tcp') -- find printers
+        local res = mdns_resolve('_printer._tcp') -- find printers
         if (res) then
             for k,v in pairs(res) do
                 print(k)
