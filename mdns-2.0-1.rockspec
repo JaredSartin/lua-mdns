@@ -1,8 +1,8 @@
 package = "mdns"
-version = "1.0-1"
+version = "2.0-1"
 source = {
     url = "git://github.com/mrpace2/lua-mdns",
-    tag = "1.0"
+    tag = "2.0"
 }
 description = {
     summary = "Multicast DNS browser implemented in pure Lua",
