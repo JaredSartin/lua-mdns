@@ -23,10 +23,10 @@
     SOFTWARE.
 
 ]]--
-require('../mdns')
+local mdns = require('../mdns')
 
 -- Query all MDNS services
-local res = mdns_query()
+local res = mdns.query()
 if (res) then
     for k,v in pairs(res) do
         print(k)
