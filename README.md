@@ -7,26 +7,22 @@ Multicast DNS (mDNS) service browser implemented in pure Lua. mDNS provides the 
 
 **Prerequisites**
 
-* Lua 5.1 or later (currently tested on Lua 5.1.4 only)
-* LuaSocket 2.0.2 or later (currently tested on LuaSocket 2.0.2 and 3.0rc1)
+* Lua 5.2 or later
+* LuaSocket 2.1 or later (currently tested on 3.0rc1)
 
 **Installation using LuaRocks package manager**
 
-    $ sudo luarocks install "https://raw.github.com/mrpace2/lua-mdns/master/mdns-1.0-1.rockspec"
-
-**Installation from Git**
-
-    $ git clone https://github.com/mrpace2/lua-mdns
+    $ luarocks make mdns-2.0-1.rockspec
 
 
 ## Example Usage
 
 The code below queries all mDNS services available on the local network.
 
-    require('mdns')
+    local mdns = require('mdns')
 
     -- DNS service discovery (defaults: all services, 2 seconds timeout)
-    local res = mdns_resolve()
+    local res = mdns.resolve()
     if (res) then
         for k,v in pairs(res) do
             -- output key name
@@ -40,35 +36,35 @@ The code below queries all mDNS services available on the local network.
         print('no result')
     end
 
-If called without parameters, `mdns_resolve` returns all available services after the default timeout of 2 seconds. Additional examples can be found in the `examples` subdirectory.
+If called without parameters, `mdns.resolve` returns all available services after the default timeout of 2 seconds. Additional examples can be found in the `examples` subdirectory.
 
 
 ## Reference
 
-The only exported function is _mdns\_resolve_.
+The only exported function is _mdns.resolve_.
 
 
-### mdns_resolve
+### mdns.resolve
 
 **Usage**
 
-    result = mdns_resolve([<service>, [<timeout>]])
+    result = mdns.resolve([<service>, [<timeout>]])
 
 
 **Parameters**
 
-_mdns\_resolve_ takes up to two parameters:
+_mdns.resolve_ takes up to two parameters:
 
-* **service**: mDNS service name (e.g. \_printers.\_tcp.local). The _.local_ suffix may be omitted. If this parameter is missing or if it evaluates to `nil`, _mdns\_resolve_ queries all available mDNS services by using enumerating the *\_services.\_dns-sd.\_udp.local* service.
+* **service**: mDNS service name (e.g. \_printers.\_tcp.local). The _.local_ suffix may be omitted. If this parameter is missing or if it evaluates to `nil`, _mdns.resolve_ queries all available mDNS services by using enumerating the *\_services.\_dns-sd.\_udp.local* service.
 
-* **timeout**: Timeout in seconds waiting for mDNS responses. If this parameter is missing or if it evaluates to `nil`, _mdns\_resolve_ uses the dafault timeout of 2 seconds.
+* **timeout**: Timeout in seconds waiting for mDNS responses. If this parameter is missing or if it evaluates to `nil`, _mdns.resolve_ uses the dafault timeout of 2 seconds.
 
 
 **Return value**
 
-If _mdns\_resolve_ succeeds, an associateve array of service descriptors is returned as a Lua table. Please note that the array may be empty if there is no mDNS service available on the local network. In case of error, the function either asserts, or it returns `nil`.
+If _mdns\.resolve_ succeeds, an associateve array of service descriptors is returned as a Lua table. Please note that the array may be empty if there is no mDNS service available on the local network. In case of error, the function either asserts, or it returns `nil`.
 
-Service descriptors returned by _mdns\_resolve_ may contain a combination of the following fields:
+Service descriptors returned by _mdns.resolve_ may contain a combination of the following fields:
 
 * **name**: mDNS service name (e.g. _HP Laserjet 4L @ server.example.com_)
 * **service**: mDNS service type (e.g. _\_ipps.\_tcp.local_)
@@ -77,7 +73,7 @@ Service descriptors returned by _mdns\_resolve_ may contain a combination of the
 * **ipv4**: IPv4 address
 * **ipv6**: IPv6 address
 
-_mdns\_resolve_ returns whatever information the mDNS daemons provide. The presence of certain fields doesn't imply that the system running _lua-mdns_ supports all features. For example, an IPv6 address may be returned even though the LuaSocket library installed on the system may not support IPv6. Resolving such potetial mismatches is beyond the scope of _lua-mdns_.
+_mdns\.resolve_ returns whatever information the mDNS daemons provide. The presence of certain fields doesn't imply that the system running _lua-mdns_ supports all features. For example, an IPv6 address may be returned even though the LuaSocket library installed on the system may not support IPv6. Resolving such potetial mismatches is beyond the scope of _lua-mdns_.
 
 
 ## License

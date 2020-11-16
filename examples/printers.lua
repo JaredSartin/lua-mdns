@@ -23,10 +23,10 @@
     SOFTWARE.
 
 ]]--
-require('../mdns')
+local mdns = require('../mdns')
 
 -- Query all MDNS printers
-local res = mdns_query('_printer._tcp')
+local res = mdns.query('_printer._tcp')
 if (res) then
     for k,v in pairs(res) do
         print(k)
