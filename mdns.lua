@@ -41,7 +41,10 @@
 ]]--
 
 local mdns = {}
+
 local socket = require('socket')
+
+
 local function mdns_make_query(service)
     -- header: transaction id, flags, qdcount, ancount, nscount, nrcount
     local data = '\000\000'..'\000\000'..'\000\001'..'\000\000'..'\000\000'..'\000\000'
@@ -51,7 +54,10 @@ local function mdns_make_query(service)
     end
     return data..string.char(0)..'\000\012'..'\000\001'
 end
+
+
 local function mdns_parse(service, data, answers)
+
     --- Helper function: parse DNS name field, supports pointers
     -- @param data     received datagram
     -- @param offset    offset within datagram (1-based)
@@ -76,11 +82,19 @@ local function mdns_parse(service, data, answers)
     -- @param val       number
     -- @param mask      mask (single bit only)
     -- @return  true if bit is set, false if not
-    local function bit_set(val, mask) return val % (mask + mask) >= mask end
+    local function bit_set(val, mask)
+        return val % (mask + mask) >= mask
+    end
+
     -- decode and check header
-    if (not data) then return nil, 'no data' end
+    if (not data) then
+        return nil, 'no data'
+    end
     local len = #data
-    if (len < 12) then return nil, 'truncated' end
+    if (len < 12) then
+        return nil, 'truncated'
+    end
+
     local header = {
         id = data:byte(1) * 256 + data:byte(2),
         flags = data:byte(3) * 256 + data:byte(4),
@@ -89,43 +103,61 @@ local function mdns_parse(service, data, answers)
         nscount = data:byte(9) * 256 + data:byte(10),
         arcount = data:byte(11) * 256 + data:byte(12),
     }
-    if (not bit_set(header.flags, 0x8000)) then return nil, 'not a reply' end
-    if (bit_set(header.flags, 0x0200)) then return nil, 'TC bit is set' end
-    if (header.ancount == 0) then return nil, 'no answer records' end
+    if (not bit_set(header.flags, 0x8000)) then
+        return nil, 'not a reply'
+    end
+    if (bit_set(header.flags, 0x0200)) then
+        return nil, 'TC bit is set'
+    end
+    if (header.ancount == 0) then
+        return nil, 'no answer records'
+    end
+
     -- skip question section
     local name
     local offset = 13
     if (header.qdcount > 0) then
         for i=1, header.qdcount do
-            if (offset > len) then return nil, 'truncated' end
+            if (offset > len) then
+                return nil, 'truncated'
+            end
             name, offset = parse_name(data, offset)
             offset = offset + 4
         end
     end
-    -- evaluate answer section
+
+
 	local function process_answer(answers, data, offset)
         local type = data:byte(offset + 0) * 256 + data:byte(offset + 1)
         local rdlength = data:byte(offset + 8) * 256 + data:byte(offset + 9)
         local rdoffset = offset + 10
+
         -- A record (IPv4 address)
         if (type == 1) then
-            if (rdlength ~= 4) then return nil, 'bad RDLENGTH with A record' end
+            if (rdlength ~= 4) then
+                return nil, 'bad RDLENGTH with A record'
+            end
             answers.a[name] = string.format('%d.%d.%d.%d', data:byte(rdoffset + 0), data:byte(rdoffset + 1), data:byte(rdoffset + 2), data:byte(rdoffset + 3))
         end
+
         -- PTR record (pointer)
         if (type == 12) then
             local target = parse_name(data, rdoffset)
             table.insert(answers.ptr, target)
         end
+
         -- AAAA record (IPv6 address)
         if (type == 28) then
-            if (rdlength ~= 16) then return nil, 'bad RDLENGTH with AAAA record' end
+            if (rdlength ~= 16) then
+                return nil, 'bad RDLENGTH with AAAA record'
+            end
             local offs = rdoffset
             local aaaa = string.format('%x', data:byte(offs) * 256 + data:byte(offs + 1))
             while (offs < rdoffset + 14) do
                 offs = offs + 2
                 aaaa = aaaa..':'..string.format('%x', data:byte(offs) * 256 + data:byte(offs + 1))
             end
+
             -- compress IPv6 address
             for _, s in ipairs({ ':0:0:0:0:0:0:0:', ':0:0:0:0:0:0:', ':0:0:0:0:0:', ':0:0:0:0:', ':0:0:0:', ':0:0:' }) do
                 local r = aaaa:gsub(s, '::')
@@ -136,9 +168,12 @@ local function mdns_parse(service, data, answers)
             end
             answers.aaaa[name] = aaaa
         end
+
         -- SRV record (service location)
         if (type == 33) then
-            if (rdlength < 6) then return nil, 'bad RDLENGTH with SRV record' end
+            if (rdlength < 6) then
+                return nil, 'bad RDLENGTH with SRV record'
+            end
             answers.srv[name] = {
                 target = parse_name(data, rdoffset + 6),
                 port = data:byte(rdoffset + 4) * 256 + data:byte(rdoffset + 5)
@@ -146,22 +181,32 @@ local function mdns_parse(service, data, answers)
         end
 		return true
 	end
+    -- evaluate answer section
     for i=1, header.ancount do
-        if (offset > len) then return nil, 'truncated' end
-		name, offset = parse_name(data, offset)
+        if (offset > len) then
+            return nil, 'truncated'
+        end
+
+        name, offset = parse_name(data, offset)
 		local worked, err = process_answer(answers, data, offset)
 		if worked == nil then return nil, err end 
         -- next answer record
         offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
     end
+-- evaluate additionals section
 	if (header.arcount > 0) then
-        for i=1, header.arcount do
-			if (offset > len) then return nil, 'truncated' end
+		for i=1, header.arcount do
+			if (offset > len) then
+				return nil, 'truncated'
+			end
+
 			name, offset = parse_name(data, offset)
 			local worked, err = process_answer(answers, data, offset)
+			if worked == nil then return nil, err end 
+			-- next answer record
 			offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
-        end
-    end
+		end
+	end
     return answers
 end
 
@@ -228,7 +273,7 @@ function mdns.query(service, timeout)
     end
 
     -- cleanup socket
-    --assert(udp:setoption("ip-drop-membership", { interface = "*", multiaddr = ip }))
+    assert(udp:setoption("ip-drop-membership", { interface = "*", multiaddr = ip }))
     assert(udp:close())
     udp = nil
 
@@ -262,4 +307,3 @@ function mdns.query(service, timeout)
 end
 
 return mdns
-
