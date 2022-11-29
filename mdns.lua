@@ -115,7 +115,7 @@ local function mdns_parse(service, data, answers)
         -- PTR record (pointer)
         if (type == 12) then
             local target = parse_name(data, rdoffset)
-            table.insert(answers.ptr, target)			
+            table.insert(answers.ptr, target)
         end
         -- AAAA record (IPv6 address)
         if (type == 28) then
