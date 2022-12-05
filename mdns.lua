@@ -126,13 +126,8 @@ local function mdns_parse(service, data, answers)
         end
     end
 
-    -- evaluate answer section
-    for i=1, header.ancount do
-        if (offset > len) then
-            return nil, 'truncated'
-        end
 
-        name, offset = parse_name(data, offset)
+	local function process_answer(answers, data, offset)
         local type = data:byte(offset + 0) * 256 + data:byte(offset + 1)
         local rdlength = data:byte(offset + 8) * 256 + data:byte(offset + 9)
         local rdoffset = offset + 10
@@ -184,11 +179,34 @@ local function mdns_parse(service, data, answers)
                 port = data:byte(rdoffset + 4) * 256 + data:byte(rdoffset + 5)
             }
         end
+		return true
+	end
+    -- evaluate answer section
+    for i=1, header.ancount do
+        if (offset > len) then
+            return nil, 'truncated'
+        end
 
+        name, offset = parse_name(data, offset)
+		local worked, err = process_answer(answers, data, offset)
+		if worked == nil then return nil, err end 
         -- next answer record
-        offset = offset + 10 + rdlength
+        offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
     end
+-- evaluate additionals section
+	if (header.arcount > 0) then
+		for i=1, header.arcount do
+			if (offset > len) then
+				return nil, 'truncated'
+			end
 
+			name, offset = parse_name(data, offset)
+			local worked, err = process_answer(answers, data, offset)
+			if worked == nil then return nil, err end 
+			-- next answer record
+			offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
+		end
+	end
     return answers
 end
 
@@ -289,4 +307,3 @@ function mdns.query(service, timeout)
 end
 
 return mdns
-
