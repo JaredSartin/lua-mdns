@@ -22,11 +22,11 @@ The code below queries all mDNS services available on the local network.
     local mdns = require('mdns')
 
     -- DNS service discovery (defaults: all services, 2 seconds timeout)
-    local res = mdns.resolve()
+    local res = mdns.query()
     if (res) then
         for k,v in pairs(res) do
             -- output key name
-            print(k) 
+            print(k)
             for k1,v1 in pairs(v) do
                 -- output service descriptor fields
                 print('  '..k1..': '..v1)
@@ -36,35 +36,35 @@ The code below queries all mDNS services available on the local network.
         print('no result')
     end
 
-If called without parameters, `mdns.resolve` returns all available services after the default timeout of 2 seconds. Additional examples can be found in the `examples` subdirectory.
+If called without parameters, `mdns.query` returns all available services after the default timeout of 2 seconds. Additional examples can be found in the `examples` subdirectory.
 
 
 ## Reference
 
-The only exported function is _mdns.resolve_.
+The only exported function is _mdns.query_.
 
 
-### mdns.resolve
+### mdns.query
 
 **Usage**
 
-    result = mdns.resolve([<service>, [<timeout>]])
+    result = mdns.query([<service>, [<timeout>]])
 
 
 **Parameters**
 
-_mdns.resolve_ takes up to two parameters:
+_mdns.query_ takes up to two parameters:
 
-* **service**: mDNS service name (e.g. \_printers.\_tcp.local). The _.local_ suffix may be omitted. If this parameter is missing or if it evaluates to `nil`, _mdns.resolve_ queries all available mDNS services by using enumerating the *\_services.\_dns-sd.\_udp.local* service.
+* **service**: mDNS service name (e.g. \_printers.\_tcp.local). The _.local_ suffix may be omitted. If this parameter is missing or if it evaluates to `nil`, _mdns.query_ queries all available mDNS services by using enumerating the *\_services.\_dns-sd.\_udp.local* service.
 
-* **timeout**: Timeout in seconds waiting for mDNS responses. If this parameter is missing or if it evaluates to `nil`, _mdns.resolve_ uses the dafault timeout of 2 seconds.
+* **timeout**: Timeout in seconds waiting for mDNS responses. If this parameter is missing or if it evaluates to `nil`, _mdns.query_ uses the dafault timeout of 2 seconds.
 
 
 **Return value**
 
 If _mdns\.resolve_ succeeds, an associateve array of service descriptors is returned as a Lua table. Please note that the array may be empty if there is no mDNS service available on the local network. In case of error, the function either asserts, or it returns `nil`.
 
-Service descriptors returned by _mdns.resolve_ may contain a combination of the following fields:
+Service descriptors returned by _mdns.query_ may contain a combination of the following fields:
 
 * **name**: mDNS service name (e.g. _HP Laserjet 4L @ server.example.com_)
 * **service**: mDNS service type (e.g. _\_ipps.\_tcp.local_)

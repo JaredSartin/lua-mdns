@@ -24,9 +24,9 @@
 
     Usage:
 
-        require('mdns')
+        local mdns = require('mdns')
 
-        local res = mdns_resolve('_printer._tcp') -- find printers
+        local res = mdns.query('_printer._tcp') -- find printers
         if (res) then
             for k,v in pairs(res) do
                 print(k)
