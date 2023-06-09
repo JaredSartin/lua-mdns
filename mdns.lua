@@ -44,6 +44,16 @@ local mdns = {}
 
 local socket = require('socket')
 
+local DNS = {
+    -- Resource Record (RR) TYPEs
+    -- https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4
+    RR = {
+        A    = 1,  -- A host address
+        PTR	 = 12, -- A domain name pointer
+        AAAA = 28, -- IP6 Address
+        SRV	 = 33  -- Server selection
+    }
+}
 
 local function mdns_make_query(service)
     -- header: transaction id, flags, qdcount, ancount, nscount, nrcount
@@ -133,7 +143,7 @@ local function mdns_parse(service, data, answers)
         local rdoffset = offset + 10
 
         -- A record (IPv4 address)
-        if (type == 1) then
+        if (type == DNS.RR.A) then
             if (rdlength ~= 4) then
                 return nil, 'bad RDLENGTH with A record'
             end
@@ -141,13 +151,13 @@ local function mdns_parse(service, data, answers)
         end
 
         -- PTR record (pointer)
-        if (type == 12) then
+        if (type == DNS.RR.PTR) then
             local target = parse_name(data, rdoffset)
             table.insert(answers.ptr, target)
         end
 
         -- AAAA record (IPv6 address)
-        if (type == 28) then
+        if (type == DNS.RR.AAAA) then
             if (rdlength ~= 16) then
                 return nil, 'bad RDLENGTH with AAAA record'
             end
@@ -170,7 +180,7 @@ local function mdns_parse(service, data, answers)
         end
 
         -- SRV record (service location)
-        if (type == 33) then
+        if (type == DNS.RR.SRV) then
             if (rdlength < 6) then
                 return nil, 'bad RDLENGTH with SRV record'
             end
