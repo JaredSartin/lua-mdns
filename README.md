@@ -49,7 +49,7 @@ If called without parameters, `mdns.query` returns all available services after 
 
 ## Reference
 
-The module exports _mdns.query_ and _mdns.socket_
+The module exports _mdns.query_, mdns.query_async, and _mdns.socket_
 
 
 ### mdns.query
@@ -84,6 +84,65 @@ Service descriptors returned by _mdns.query_ may contain a combination of the fo
 
 _mdns\.resolve_ returns whatever information the mDNS daemons provide. The presence of certain fields doesn't imply that the system running _lua-mdns_ supports all features. For example, an IPv6 address may be returned even though the LuaSocket library installed on the system may not support IPv6. Resolving such potetial mismatches is beyond the scope of _lua-mdns_.
 
+### mdns.query_async
+
+Allows the use of platform appropriate timer options. Specifically, if available, an asynchronous timer.
+
+**Usage**
+
+    tick, finalise = mdns.query_async([<service>])
+
+**Parameters**
+
+_mdns.query_async_ takes up to one parameter:
+
+* **service**: see _mdns.query_
+
+**Return value**
+
+_mdns.query_async_ returns two functions. These are indented to be called by a platform appropriate timer.
+
+* **tick()**: This should be called frequently as possible until the user operation timeout.
+
+* **finalise()**: Once the user operation has timed out, this function should be called.\
+It will clean up and return a table of services.
+**Return value**
+    * **services**: Table of service descriptors or `nil`, see _mdns.query_
+
+**Example**
+
+The `timer` library here is given as an example, please use a platform appropriate library:
+
+    local mdns = require('mdns')
+    local ticker = require('timer')
+    local timeout = require('timer')
+
+    -- Query all MDNS services
+    local mdns_tick, mdns_finalise = mdns.query_async()
+
+    -- Setup ticker
+    ticker.single_shot = false
+    ticker.interval = 0.01
+    ticker.handler = function()
+        mdns_tick()
+    end
+    ticker:start()
+
+    -- Setup timeout
+    timeout.single_shot = true
+    timeout.interval = 2.0
+    timeout.handler = function()
+        ticker:stop()
+
+        local res = mdns_finalise()
+        if (res) then
+            for k,v in pairs(res) do
+                <... use results>
+            end
+        end
+    end
+    timeout:start()
+
 ### mdns.socket
 
 Allows the user to set custom socket operations.
@@ -103,12 +162,12 @@ e.g. Use IPv6, unicast IPv4, some other transport, or even a socket library othe
     Setup the socket
 
 * **mdns.socket:send()**
-    Send datagram
+    Send datagram\
     **Parameters**
     * **datagram**: Datagram string to send to the peer
 
 * **mdns.socket:recv()**
-    Receive response datagram
+    Receive response datagram\
     **Return value**
     * **datagram**: Response datagram, or `nil`
 
