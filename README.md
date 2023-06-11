@@ -26,11 +26,19 @@ The code below queries all mDNS services available on the local network.
     if (res) then
         for k,v in pairs(res) do
             -- output key name
-            print(k) 
-            for k1,v1 in pairs(v) do
-                -- output service descriptor fields
-                print('  '..k1..': '..v1)
+            print(k)
+            local function print_table(t, indent) 
+                for k,v in pairs(t) do
+                    -- output service descriptor fields
+                    if (type(v) == 'table') then
+                        print(string.rep('  ',indent)..k..':')
+                        print_table(v, indent + 1)
+                    else
+                        print(string.rep('  ',indent)..k..': '..v)
+                    end
+                end
             end
+            print_table(v, 1)
         end
     else
         print('no result')
@@ -72,6 +80,7 @@ Service descriptors returned by _mdns.resolve_ may contain a combination of the 
 * **port**: port number
 * **ipv4**: IPv4 address
 * **ipv6**: IPv6 address
+* **text**: Table of text record(s)
 
 _mdns\.resolve_ returns whatever information the mDNS daemons provide. The presence of certain fields doesn't imply that the system running _lua-mdns_ supports all features. For example, an IPv6 address may be returned even though the LuaSocket library installed on the system may not support IPv6. Resolving such potetial mismatches is beyond the scope of _lua-mdns_.
 
