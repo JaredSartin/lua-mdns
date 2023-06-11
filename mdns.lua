@@ -30,9 +30,17 @@
         if (res) then
             for k,v in pairs(res) do
                 print(k)
-                for k1,v1 in pairs(v) do
-                    print('  '..k1..': '..v1)
+                local function print_table(t, indent) 
+                    for k,v in pairs(t) do
+                        if (type(v) == 'table') then
+                            print(string.rep('  ',indent)..k..':')
+                            print_table(v, indent + 1)
+                        else
+                            print(string.rep('  ',indent)..k..': '..v)
+                        end
+                    end
                 end
+                print_table(v, 1)
             end
         else
             print('no result')
@@ -44,6 +52,17 @@ local mdns = {}
 
 local socket = require('socket')
 
+local DNS = {
+    -- Resource Record (RR) TYPEs
+    -- https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4
+    RR = {
+        A    = 1,  -- A host address
+        PTR	 = 12, -- A domain name pointer
+        TXT	 = 16, -- Text strings
+        AAAA = 28, -- IP6 Address
+        SRV	 = 33  -- Server selection
+    }
+}
 
 local function mdns_make_query(service)
     -- header: transaction id, flags, qdcount, ancount, nscount, nrcount
@@ -133,7 +152,7 @@ local function mdns_parse(service, data, answers)
         local rdoffset = offset + 10
 
         -- A record (IPv4 address)
-        if (type == 1) then
+        if (type == DNS.RR.A) then
             if (rdlength ~= 4) then
                 return nil, 'bad RDLENGTH with A record'
             end
@@ -141,13 +160,13 @@ local function mdns_parse(service, data, answers)
         end
 
         -- PTR record (pointer)
-        if (type == 12) then
+        if (type == DNS.RR.PTR) then
             local target = parse_name(data, rdoffset)
             table.insert(answers.ptr, target)
         end
 
         -- AAAA record (IPv6 address)
-        if (type == 28) then
+        if (type == DNS.RR.AAAA) then
             if (rdlength ~= 16) then
                 return nil, 'bad RDLENGTH with AAAA record'
             end
@@ -170,7 +189,7 @@ local function mdns_parse(service, data, answers)
         end
 
         -- SRV record (service location)
-        if (type == 33) then
+        if (type == DNS.RR.SRV) then
             if (rdlength < 6) then
                 return nil, 'bad RDLENGTH with SRV record'
             end
@@ -179,6 +198,22 @@ local function mdns_parse(service, data, answers)
                 port = data:byte(rdoffset + 4) * 256 + data:byte(rdoffset + 5)
             }
         end
+
+        -- TXT Text strings
+        if (type == DNS.RR.TXT) then
+            if (not answers.txt[name]) then answers.txt[name] = {} end
+            
+            local txtoffset = rdoffset
+            while (txtoffset < rdoffset + rdlength) do
+                local txtlength = data:byte(txtoffset)
+                txtoffset = txtoffset + 1
+
+                local txt = data:sub(txtoffset, txtoffset + txtlength - 1)
+                table.insert(answers.txt[name], txt)
+                txtoffset = txtoffset + txtlength
+            end
+        end
+
 		return true
 	end
     -- evaluate answer section
@@ -229,6 +264,7 @@ end
 --                      port: port number
 --                      ipv4: IPv4 address
 --                      ipv6: IPv6 address
+--                      text: Table of text record(s)
 --
 function mdns.query(service, timeout)
 
@@ -257,7 +293,7 @@ function mdns.query(service, timeout)
     assert(udp:sendto(mdns_make_query(service), ip, port))
 
     -- collect responses until timeout
-    local answers = { srv = {}, a = {}, aaaa = {}, ptr = {} }
+    local answers = { srv = {}, a = {}, aaaa = {}, ptr = {}, txt = {} }
     local start = os.time()
     while (os.time() - start < timeout) do
         local data, peeraddr, peerport = udp:receivefrom()
@@ -297,7 +333,7 @@ function mdns.query(service, timeout)
                     v.target = nil
                 end
                 v.service = svc
-                v.name = name
+                v.text = answers.txt[k]
                 services[k] = v
             end
         end

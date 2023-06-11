@@ -30,9 +30,17 @@ local res = mdns.query('_printer._tcp')
 if (res) then
     for k,v in pairs(res) do
         print(k)
-        for k1,v1 in pairs(v) do
-            print('  '..k1..': '..v1)
+        local function print_table(t, indent) 
+            for k,v in pairs(t) do
+                if (type(v) == 'table') then
+                    print(string.rep('  ',indent)..k..':')
+                    print_table(v, indent + 1)
+                else
+                    print(string.rep('  ',indent)..k..': '..v)
+                end
+            end
         end
+        print_table(v, 1)
     end
 else
     print('no result')
