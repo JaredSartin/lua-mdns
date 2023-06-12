@@ -27,7 +27,7 @@ The code below queries all mDNS services available on the local network.
         for k,v in pairs(res) do
             -- output key name
             print(k)
-            local function print_table(t, indent) 
+            local function print_table(t, indent)
                 for k,v in pairs(t) do
                     -- output service descriptor fields
                     if (type(v) == 'table') then
@@ -49,7 +49,7 @@ If called without parameters, `mdns.query` returns all available services after 
 
 ## Reference
 
-The only exported function is _mdns.query_.
+The module exports _mdns.query_ and _mdns.socket_
 
 
 ### mdns.query
@@ -83,6 +83,56 @@ Service descriptors returned by _mdns.query_ may contain a combination of the fo
 * **text**: Table of text record(s)
 
 _mdns\.resolve_ returns whatever information the mDNS daemons provide. The presence of certain fields doesn't imply that the system running _lua-mdns_ supports all features. For example, an IPv6 address may be returned even though the LuaSocket library installed on the system may not support IPv6. Resolving such potetial mismatches is beyond the scope of _lua-mdns_.
+
+### mdns.socket
+
+Allows the user to set custom socket operations.
+e.g. Use IPv6, unicast IPv4, some other transport, or even a socket library other than LuaSocket.
+
+**Members**
+
+* **mdns.socket.PEER.IP**
+    MDNS Query destination IP.
+    Default: IPv4 multicast address '224.0.0.251'
+
+* **mdns.socket.PEER.PORT**
+    MDNS Query destination port.
+    Default: 5353
+
+* **mdns.socket:setup()**
+    Setup the socket
+
+* **mdns.socket:send()**
+    Send datagram
+    **Parameters**
+    * **datagram**: Datagram string to send to the peer
+
+* **mdns.socket:recv()**
+    Receive response datagram
+    **Return value**
+    * **datagram**: Response datagram, or `nil`
+
+* **mdns.socket:teardown()**
+    Tear down the socket
+
+**Example (IPv6)**
+
+    local mdns = require('mdns')
+
+    mdns.socket.PEER.IP = 'ff02::fb'
+    mdns.socket.setup = function(self, timeout)
+        local socket = require('socket')
+        self.udp = socket.udp6()
+        assert(self.udp:setoption('ipv6-add-membership', { multiaddr = self.PEER.IP }))
+        assert(self.udp:settimeout(0.1))
+    end
+    mdns.socket.teardown = function(self)
+        assert(self.udp:setoption("ipv6-drop-membership", { multiaddr = self.PEER.IP }))
+        assert(self.udp:close())
+        self.udp = nil
+    end
+
+    local res = mdns.resolve()
 
 
 ## License

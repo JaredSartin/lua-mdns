@@ -50,8 +50,6 @@
 
 local mdns = {}
 
-local socket = require('socket')
-
 local DNS = {
     -- Resource Record (RR) TYPEs
     -- https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4
@@ -245,6 +243,59 @@ local function mdns_parse(service, data, answers)
     return answers
 end
 
+---Socket options
+---These are exposed to allow the user to customise
+---e.g. Use IPv6, some other transport, or even a socket library other than LuaSocket
+mdns.socket = {
+
+    PEER = {
+        --Destination IP
+        IP = '224.0.0.251',
+        --Destination port
+        PORT = 5353
+    },
+
+    --LuaSocket UDP Object
+    udp = nil,
+
+    --Setup socket
+    ---@param self table mdns_socket Object
+    setup = function(self)
+        local socket = require('socket')
+        self.udp = socket.udp()
+        assert(self.udp:setsockname('*', 0))
+        assert(self.udp:setoption('ip-add-membership', { interface = '*', multiaddr = self.PEER.IP }))
+        assert(self.udp:settimeout(0.1))
+    end,
+
+    --Send datagram
+    ---@param self table mdns_socket Object
+    ---@param datagram string MDNS query string
+    send = function(self, datagram)
+        assert(self.udp:sendto(datagram, self.PEER.IP, self.PEER.PORT))
+    end,
+
+    --Receive response datagram
+    ---@param self table mdns_socket Object
+    ---@return string|nil datagram Response datagram
+    recv = function(self)
+        local datagram, peeraddr, peerport = self.udp:receivefrom()
+        if (peerport == self.PEER.PORT) then
+            return datagram
+        else
+            return nil
+        end
+    end,
+
+    --Tear down socket
+    ---@param self table mdns_socket Object
+    teardown = function(self)
+        assert(self.udp:setoption("ip-drop-membership", { interface = "*", multiaddr = self.PEER.IP }))
+        assert(self.udp:close())
+        self.udp = nil
+    end
+
+}
 
 --- Locate MDNS services in local network
 --
@@ -284,24 +335,21 @@ function mdns.query(service, timeout)
     local timeout = timeout or 2.0
 
     -- create IPv4 socket for multicast DNS
-    local ip, port, udp = '224.0.0.251', 5353, socket.udp()
-    assert(udp:setsockname('*', 0))
-    assert(udp:setoption('ip-add-membership', { interface = '*', multiaddr = ip }))
-    assert(udp:settimeout(0.1))
+    mdns.socket:setup()
 
     -- send query
-    assert(udp:sendto(mdns_make_query(service), ip, port))
+    mdns.socket:send(mdns_make_query(service))
 
     -- collect responses until timeout
     local answers = { srv = {}, a = {}, aaaa = {}, ptr = {}, txt = {} }
     local start = os.time()
     while (os.time() - start < timeout) do
-        local data, peeraddr, peerport = udp:receivefrom()
-        if data and (peerport == port) then
+        local data = mdns.socket:recv()
+        if (data) then
             mdns_parse(service, data, answers)
             if (browse) then
                 for _, ptr in ipairs(answers.ptr) do
-                    assert(udp:sendto(mdns_make_query(ptr), ip, port))
+                    mdns.socket:send(mdns_make_query(ptr))
                 end
                 answers.ptr = {}
             end
@@ -309,9 +357,7 @@ function mdns.query(service, timeout)
     end
 
     -- cleanup socket
-    assert(udp:setoption("ip-drop-membership", { interface = "*", multiaddr = ip }))
-    assert(udp:close())
-    udp = nil
+    mdns.socket:teardown()
 
     -- extract target services from answers, resolve hostnames
     local services = {}
