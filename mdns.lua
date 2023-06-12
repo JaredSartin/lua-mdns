@@ -30,7 +30,7 @@
         if (res) then
             for k,v in pairs(res) do
                 print(k)
-                local function print_table(t, indent) 
+                local function print_table(t, indent)
                     for k,v in pairs(t) do
                         if (type(v) == 'table') then
                             print(string.rep('  ',indent)..k..':')
@@ -50,7 +50,15 @@
 
 local mdns = {}
 
-local socket = require('socket')
+local SERVICE_TYPE_META_QUERY = '_services._dns-sd._udp'
+local LOCAL_DOMAIN = '.local'
+
+--Is the service name the service type meta query?
+---@param service string Service name to check
+---@return boolean
+local function mdns_is_meta_query(service)
+    return (service:sub(1,#SERVICE_TYPE_META_QUERY) == SERVICE_TYPE_META_QUERY)
+end
 
 local DNS = {
     -- Resource Record (RR) TYPEs
@@ -58,9 +66,9 @@ local DNS = {
     RR = {
         A    = 1,  -- A host address
         PTR	 = 12, -- A domain name pointer
-        TXT	 = 16, -- Text strings
+        TXT  = 16, -- Text strings
         AAAA = 28, -- IP6 Address
-        SRV	 = 33  -- Server selection
+        SRV  = 33  -- Server selection
     }
 }
 
@@ -202,7 +210,7 @@ local function mdns_parse(service, data, answers)
         -- TXT Text strings
         if (type == DNS.RR.TXT) then
             if (not answers.txt[name]) then answers.txt[name] = {} end
-            
+
             local txtoffset = rdoffset
             while (txtoffset < rdoffset + rdlength) do
                 local txtlength = data:byte(txtoffset)
@@ -245,6 +253,145 @@ local function mdns_parse(service, data, answers)
     return answers
 end
 
+--Receive and parse datagram replies
+---@param service string MDNS service name
+---@param answers table Table of answers from query
+local function mdns_recv_and_parse(service, answers)
+    -- Ensure that answers has a table at the specified key
+    local function checkAnswersKey(key)
+        if (answers[key] == nil) then
+            answers[key] = {}
+        end
+    end
+
+    checkAnswersKey('srv')
+    checkAnswersKey('a')
+    checkAnswersKey('aaaa')
+    checkAnswersKey('ptr')
+    checkAnswersKey('txt')
+
+    local data = mdns.socket:recv()
+    if (data) then
+        mdns_parse(service, data, answers)
+        if (mdns_is_meta_query(service)) then
+            for _, ptr in ipairs(answers.ptr) do
+                mdns.socket:send(mdns_make_query(ptr))
+            end
+            answers.ptr = {}
+        end
+    end
+end
+
+--Extract target services from answers, resolve hostnames
+---@param service string MDNS service name
+---@param answers table Table of answers from query
+---@return table|nil services Formatted table of services
+local function mdns_results(service, answers)
+    local services = {}
+
+    if (answers.srv == nil) then
+        return nil
+    end
+
+    for k,v in pairs(answers.srv) do
+        local pos = k:find('%.')
+        if (pos and (pos > 1) and (pos < #k)) then
+            local name, svc = k:sub(1, pos - 1), k:sub(pos + 1)
+            if (mdns_is_meta_query(service)) or (svc == service) then
+                if (v.target) then
+                    if (answers.a[v.target]) then
+                        v.ipv4 = answers.a[v.target]
+                    end
+                    if (answers.aaaa[v.target]) then
+                        v.ipv6 = answers.aaaa[v.target]
+                    end
+                    if (v.target:sub(-6) == '.local') then
+                        v.hostname = v.target:sub(1, #v.target - 6)
+                    end
+                    v.target = nil
+                end
+                v.service = svc
+                v.name = name
+                v.text = answers.txt[k]
+                services[k] = v
+            end
+        end
+    end
+
+    return services
+end
+
+---Socket options
+---These are exposed to allow the user to customise
+---e.g. Use IPv6, some other transport, or even a socket library other than LuaSocket
+mdns.socket = {
+
+    PEER = {
+        --Destination IP
+        IP = '224.0.0.251',
+        --Destination port
+        PORT = 5353
+    },
+
+    --LuaSocket UDP Object
+    udp = nil,
+
+    --Setup socket
+    ---@param self table mdns_socket Object
+    setup = function(self)
+        local socket = require('socket')
+        self.udp = socket.udp()
+        assert(self.udp:setsockname('*', 0))
+        assert(self.udp:setoption('ip-add-membership', { interface = '*', multiaddr = self.PEER.IP }))
+        assert(self.udp:settimeout(0.1))
+    end,
+
+    --Send datagram
+    ---@param self table mdns_socket Object
+    ---@param datagram string MDNS query string
+    send = function(self, datagram)
+        assert(self.udp:sendto(datagram, self.PEER.IP, self.PEER.PORT))
+    end,
+
+    --Receive response datagram
+    ---@param self table mdns_socket Object
+    ---@return string|nil datagram Response datagram
+    recv = function(self)
+        local datagram, peeraddr, peerport = self.udp:receivefrom()
+        if (peerport == self.PEER.PORT) then
+            return datagram
+        else
+            return nil
+        end
+    end,
+
+    --Tear down socket
+    ---@param self table mdns_socket Object
+    teardown = function(self)
+        assert(self.udp:setoption("ip-drop-membership", { interface = "*", multiaddr = self.PEER.IP }))
+        assert(self.udp:close())
+        self.udp = nil
+    end
+
+}
+
+--Quantify query or return special meta-query if no service name specified
+---@param service? string|nil Service name
+---@return string service Quantified service name to query
+local function mdns_quantify_query(service)
+
+    local browse = false
+    if (not service) then
+        service = SERVICE_TYPE_META_QUERY
+    end
+
+    -- append .local if needed
+    if (service:sub(-#LOCAL_DOMAIN) ~= LOCAL_DOMAIN) then
+        service = service..LOCAL_DOMAIN
+    end
+
+    return service
+end
 
 --- Locate MDNS services in local network
 --
@@ -268,78 +415,62 @@ end
 --
 function mdns.query(service, timeout)
 
-    -- browse all services if no service name specified
-    local browse = false
-    if (not service) then
-        service = '_services._dns-sd._udp'
-        browse = true
-    end
-
-    -- append .local if needed
-    if (service:sub(-6) ~= '.local') then
-        service = service..'.local'
-    end
+    -- quantify query or return special meta-query if no service name specified
+    local service = mdns_quantify_query(service)
 
     -- default timeout: 2 seconds
     local timeout = timeout or 2.0
 
     -- create IPv4 socket for multicast DNS
-    local ip, port, udp = '224.0.0.251', 5353, socket.udp()
-    assert(udp:setsockname('*', 0))
-    assert(udp:setoption('ip-add-membership', { interface = '*', multiaddr = ip }))
-    assert(udp:settimeout(0.1))
+    mdns.socket:setup()
 
     -- send query
-    assert(udp:sendto(mdns_make_query(service), ip, port))
+    mdns.socket:send(mdns_make_query(service))
 
     -- collect responses until timeout
-    local answers = { srv = {}, a = {}, aaaa = {}, ptr = {}, txt = {} }
+    local answers = {}
     local start = os.time()
     while (os.time() - start < timeout) do
-        local data, peeraddr, peerport = udp:receivefrom()
-        if data and (peerport == port) then
-            mdns_parse(service, data, answers)
-            if (browse) then
-                for _, ptr in ipairs(answers.ptr) do
-                    assert(udp:sendto(mdns_make_query(ptr), ip, port))
-                end
-                answers.ptr = {}
-            end
-        end
+        mdns_recv_and_parse(service, answers)
     end
 
     -- cleanup socket
-    assert(udp:setoption("ip-drop-membership", { interface = "*", multiaddr = ip }))
-    assert(udp:close())
-    udp = nil
+    mdns.socket:teardown()
 
     -- extract target services from answers, resolve hostnames
-    local services = {}
-    for k,v in pairs(answers.srv) do
-        local pos = k:find('%.')
-        if (pos and (pos > 1) and (pos < #k)) then
-            local name, svc = k:sub(1, pos - 1), k:sub(pos + 1)
-            if (browse) or (svc == service) then
-                if (v.target) then
-                    if (answers.a[v.target]) then
-                        v.ipv4 = answers.a[v.target]
-                    end
-                    if (answers.aaaa[v.target]) then
-                        v.ipv6 = answers.aaaa[v.target]
-                    end
-                    if (v.target:sub(-6) == '.local') then
-                        v.hostname = v.target:sub(1, #v.target - 6)
-                    end
-                    v.target = nil
-                end
-                v.service = svc
-                v.text = answers.txt[k]
-                services[k] = v
-            end
-        end
+    return mdns_results(service, answers)
+
+end
+
+function mdns.query_async(service)
+
+    -- quantify query or return special meta-query if no service name specified
+    local service = mdns_quantify_query(service)
+
+    -- create IPv4 socket for multicast DNS
+    mdns.socket:setup()
+
+    -- send query
+    mdns.socket:send(mdns_make_query(service))
+
+    -- create async callbacks
+    local answers = {}
+    local function tick()
+        -- collect responses
+        mdns_recv_and_parse(service, answers)
     end
 
-    return services
+    local function finalise()
+        -- cleanup socket
+        mdns.socket:teardown()
+
+        -- extract target services from answers, resolve hostnames
+        return mdns_results(service, answers)
+    end
+
+    -- Return async callback functions
+    return tick, finalise
+
 end
 
 return mdns
