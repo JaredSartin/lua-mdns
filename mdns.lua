@@ -187,7 +187,7 @@ local function mdns_parse(service, data, answers)
 
             -- compress IPv6 address
             for _, s in ipairs({ ':0:0:0:0:0:0:0:', ':0:0:0:0:0:0:', ':0:0:0:0:0:', ':0:0:0:0:', ':0:0:0:', ':0:0:' }) do
-                local r = aaaa:gsub(s, '::')
+                local r = aaaa:gsub(s, '::', 1)
                 if (r ~= aaaa) then
                     aaaa = r
                     break
