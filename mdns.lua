@@ -65,7 +65,7 @@ local DNS = {
     -- https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4
     RR = {
         A    = 1,  -- A host address
-        PTR	 = 12, -- A domain name pointer
+        PTR  = 12, -- A domain name pointer
         TXT  = 16, -- Text strings
         AAAA = 28, -- IP6 Address
         SRV  = 33  -- Server selection
@@ -152,7 +152,7 @@ local function mdns_parse(service, data, answers)
     end
 
 
-	local function process_answer(answers, data, offset)
+    local function process_answer(answers, data, offset)
         local type = data:byte(offset + 0) * 256 + data:byte(offset + 1)
         local rdlength = data:byte(offset + 8) * 256 + data:byte(offset + 9)
         local rdoffset = offset + 10
@@ -211,8 +211,8 @@ local function mdns_parse(service, data, answers)
             end
         end
 
-		return true
-	end
+        return true
+    end
 
     -- evaluate answer section
     for i=1, header.ancount do
@@ -221,7 +221,7 @@ local function mdns_parse(service, data, answers)
         end
 
         name, offset = parse_name(data, offset)
-		local worked, err = process_answer(answers, data, offset)
+        local worked, err = process_answer(answers, data, offset)
 
         if worked == nil then
             return nil, err
@@ -231,23 +231,23 @@ local function mdns_parse(service, data, answers)
         offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
     end
 -- evaluate additionals section
-	if (header.arcount > 0) then
-		for i=1, header.arcount do
-			if (offset > len) then
-				return nil, 'truncated'
-			end
+    if (header.arcount > 0) then
+        for i=1, header.arcount do
+            if (offset > len) then
+                return nil, 'truncated'
+            end
 
-			name, offset = parse_name(data, offset)
-			local worked, err = process_answer(answers, data, offset)
+            name, offset = parse_name(data, offset)
+            local worked, err = process_answer(answers, data, offset)
 
             if worked == nil then
                 return nil, err
             end
 
-			-- next answer record
-			offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
-		end
-	end
+            -- next answer record
+            offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
+        end
+    end
     return answers
 end
 
