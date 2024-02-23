@@ -65,7 +65,7 @@ local DNS = {
     -- https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#dns-parameters-4
     RR = {
         A    = 1,  -- A host address
-        PTR	 = 12, -- A domain name pointer
+        PTR  = 12, -- A domain name pointer
         TXT  = 16, -- Text strings
         AAAA = 28, -- IP6 Address
         SRV  = 33  -- Server selection
@@ -82,9 +82,7 @@ local function mdns_make_query(service)
     return data..string.char(0)..'\000\012'..'\000\001'
 end
 
-
 local function mdns_parse(service, data, answers)
-
     --- Helper function: parse DNS name field, supports pointers
     -- @param data     received datagram
     -- @param offset    offset within datagram (1-based)
@@ -154,39 +152,34 @@ local function mdns_parse(service, data, answers)
     end
 
 
-	local function process_answer(answers, data, offset)
+    local function process_answer(answers, data, offset)
         local type = data:byte(offset + 0) * 256 + data:byte(offset + 1)
         local rdlength = data:byte(offset + 8) * 256 + data:byte(offset + 9)
         local rdoffset = offset + 10
 
         -- A record (IPv4 address)
-        if (type == DNS.RR.A) then
+        if type == DNS.RR.A then
             if (rdlength ~= 4) then
                 return nil, 'bad RDLENGTH with A record'
             end
-            answers.a[name] = string.format('%d.%d.%d.%d', data:byte(rdoffset + 0), data:byte(rdoffset + 1), data:byte(rdoffset + 2), data:byte(rdoffset + 3))
-        end
-
+            answers.a[name] = string.format('%d.%d.%d.%d', data:byte(rdoffset, rdoffset+3))
         -- PTR record (pointer)
-        if (type == DNS.RR.PTR) then
+        elseif type == DNS.RR.PTR then
             local target = parse_name(data, rdoffset)
             table.insert(answers.ptr, target)
-        end
-
         -- AAAA record (IPv6 address)
-        if (type == DNS.RR.AAAA) then
+        elseif type == DNS.RR.AAAA then
             if (rdlength ~= 16) then
                 return nil, 'bad RDLENGTH with AAAA record'
             end
-            local offs = rdoffset
-            local aaaa = string.format('%x', data:byte(offs) * 256 + data:byte(offs + 1))
-            while (offs < rdoffset + 14) do
-                offs = offs + 2
-                aaaa = aaaa..':'..string.format('%x', data:byte(offs) * 256 + data:byte(offs + 1))
+
+            local aaaa = string.format('%x', data:byte(rdoffset)*256 + data:byte(rdoffset+1))
+            for offs = rdoffset+2, rdoffset+14, 2 do
+                aaaa = aaaa..':'..string.format('%x', data:byte(offs)*256 + data:byte(offs+1))
             end
 
             -- compress IPv6 address
-            for _, s in ipairs({ ':0:0:0:0:0:0:0:', ':0:0:0:0:0:0:', ':0:0:0:0:0:', ':0:0:0:0:', ':0:0:0:', ':0:0:' }) do
+            for _, s in ipairs{ ':0:0:0:0:0:0:0:', ':0:0:0:0:0:0:', ':0:0:0:0:0:', ':0:0:0:0:', ':0:0:0:', ':0:0:' } do
                 local r = aaaa:gsub(s, '::', 1)
                 if (r ~= aaaa) then
                     aaaa = r
@@ -194,10 +187,8 @@ local function mdns_parse(service, data, answers)
                 end
             end
             answers.aaaa[name] = aaaa
-        end
-
         -- SRV record (service location)
-        if (type == DNS.RR.SRV) then
+        elseif type == DNS.RR.SRV then
             if (rdlength < 6) then
                 return nil, 'bad RDLENGTH with SRV record'
             end
@@ -205,11 +196,9 @@ local function mdns_parse(service, data, answers)
                 target = parse_name(data, rdoffset + 6),
                 port = data:byte(rdoffset + 4) * 256 + data:byte(rdoffset + 5)
             }
-        end
-
         -- TXT Text strings
-        if (type == DNS.RR.TXT) then
-            if (not answers.txt[name]) then answers.txt[name] = {} end
+        elseif type == DNS.RR.TXT then
+            answers.txt[name] = answers.txt[name] or {}
 
             local txtoffset = rdoffset
             while (txtoffset < rdoffset + rdlength) do
@@ -222,8 +211,9 @@ local function mdns_parse(service, data, answers)
             end
         end
 
-		return true
-	end
+        return true
+    end
+
     -- evaluate answer section
     for i=1, header.ancount do
         if (offset > len) then
@@ -231,25 +221,33 @@ local function mdns_parse(service, data, answers)
         end
 
         name, offset = parse_name(data, offset)
-		local worked, err = process_answer(answers, data, offset)
-		if worked == nil then return nil, err end 
+        local worked, err = process_answer(answers, data, offset)
+
+        if worked == nil then
+            return nil, err
+        end
+
         -- next answer record
         offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
     end
 -- evaluate additionals section
-	if (header.arcount > 0) then
-		for i=1, header.arcount do
-			if (offset > len) then
-				return nil, 'truncated'
-			end
+    if (header.arcount > 0) then
+        for i=1, header.arcount do
+            if (offset > len) then
+                return nil, 'truncated'
+            end
 
-			name, offset = parse_name(data, offset)
-			local worked, err = process_answer(answers, data, offset)
-			if worked == nil then return nil, err end 
-			-- next answer record
-			offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
-		end
-	end
+            name, offset = parse_name(data, offset)
+            local worked, err = process_answer(answers, data, offset)
+
+            if worked == nil then
+                return nil, err
+            end
+
+            -- next answer record
+            offset = offset + 10 + (data:byte(offset + 8) * 256 + data:byte(offset + 9))
+        end
+    end
     return answers
 end
 
@@ -258,17 +256,9 @@ end
 ---@param answers table Table of answers from query
 local function mdns_recv_and_parse(service, answers)
     -- Ensure that answers has a table at the specified key
-    local function checkAnswersKey(key)
-        if (answers[key] == nil) then
-            answers[key] = {}
-        end
+    for _, key in ipairs{ 'srv', 'a', 'aaaa', 'ptr', 'txt' } do
+        answers[key] = answers[key] or {}
     end
-
-    checkAnswersKey('srv')
-    checkAnswersKey('a')
-    checkAnswersKey('aaaa')
-    checkAnswersKey('ptr')
-    checkAnswersKey('txt')
 
     local data = mdns.socket:recv()
     if (data) then
@@ -305,7 +295,7 @@ local function mdns_results(service, answers)
                     if (answers.aaaa[v.target]) then
                         v.ipv6 = answers.aaaa[v.target]
                     end
-                    if (v.target:sub(-6) == '.local') then
+                    if (v.target:sub(-#LOCAL_DOMAIN) == LOCAL_DOMAIN) then
                         v.hostname = v.target:sub(1, #v.target - 6)
                     end
                     v.target = nil
@@ -325,7 +315,6 @@ end
 ---These are exposed to allow the user to customise
 ---e.g. Use IPv6, some other transport, or even a socket library other than LuaSocket
 mdns.socket = {
-
     PEER = {
         --Destination IP
         IP = '224.0.0.251',
@@ -368,21 +357,18 @@ mdns.socket = {
     --Tear down socket
     ---@param self table mdns_socket Object
     teardown = function(self)
-        assert(self.udp:setoption("ip-drop-membership", { interface = "*", multiaddr = self.PEER.IP }))
+        assert(self.udp:setoption('ip-drop-membership', { interface = '*', multiaddr = self.PEER.IP }))
         assert(self.udp:close())
         self.udp = nil
     end
-
 }
 
 --Quantify query or return special meta-query if no service name specified
 ---@param service? string|nil Service name
 ---@return string service Quantified service name to query
 local function mdns_quantify_query(service)
-
-    local browse = false
-    if (not service) then
-        service = SERVICE_TYPE_META_QUERY
+    if not service then
+        return SERVICE_TYPE_META_QUERY..LOCAL_DOMAIN
     end
 
     -- append .local if needed
@@ -395,11 +381,11 @@ end
 
 --- Locate MDNS services in local network
 --
--- @param service   MDNS service name to search for (e.g. _ipps._tcp). A .local postfix will 
+-- @param service   MDNS service name to search for (e.g. _ipps._tcp). A .local postfix will
 --                  be appended if needed. If this parameter is not specified, all services
 --                  will be queried.
 --
--- @param timeout   Number of seconds to wait for MDNS responses. The default timeout is 2 
+-- @param timeout   Number of seconds to wait for MDNS responses. The default timeout is 2
 --                  seconds if this parameter is not specified.
 --
 -- @return          Table of MDNS services. Entry keys are service identifiers. Each entry
@@ -414,12 +400,11 @@ end
 --                      text: Table of text record(s)
 --
 function mdns.query(service, timeout)
-
     -- quantify query or return special meta-query if no service name specified
-    local service = mdns_quantify_query(service)
+    service = mdns_quantify_query(service)
 
     -- default timeout: 2 seconds
-    local timeout = timeout or 2.0
+    timeout = timeout or 2.0
 
     -- create IPv4 socket for multicast DNS
     mdns.socket:setup()
@@ -439,13 +424,11 @@ function mdns.query(service, timeout)
 
     -- extract target services from answers, resolve hostnames
     return mdns_results(service, answers)
-
 end
 
 function mdns.query_async(service)
-
     -- quantify query or return special meta-query if no service name specified
-    local service = mdns_quantify_query(service)
+    service = mdns_quantify_query(service)
 
     -- create IPv4 socket for multicast DNS
     mdns.socket:setup()
@@ -470,7 +453,6 @@ function mdns.query_async(service)
 
     -- Return async callback functions
     return tick, finalise
-
 end
 
 return mdns
