@@ -295,7 +295,7 @@ local function mdns_results(service, answers)
                     if (answers.aaaa[v.target]) then
                         v.ipv6 = answers.aaaa[v.target]
                     end
-                    if (v.target:sub(-6) == '.local') then
+                    if (v.target:sub(-#LOCAL_DOMAIN) == LOCAL_DOMAIN) then
                         v.hostname = v.target:sub(1, #v.target - 6)
                     end
                     v.target = nil
